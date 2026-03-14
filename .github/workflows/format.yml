@@ -1,0 +1,49 @@
+name: Format code with Ruff
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  format:
+    if: >-
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@format')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+
+    steps:
+      - name: Get PR branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_json=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.issue.number }})
+          echo "ref=$(echo "$pr_json" | jq -r .head.ref)" >> "$GITHUB_OUTPUT"
+          echo "repo=$(echo "$pr_json" | jq -r .head.repo.full_name)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr.outputs.repo }}
+          ref: ${{ steps.pr.outputs.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Run ruff format
+        run: uv run ruff format .
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No formatting changes needed."
+          else
+            git commit -m "style: auto-format with ruff"
+            git push
+          fi
